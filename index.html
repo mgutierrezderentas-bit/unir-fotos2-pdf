@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DERENTAS - Unir fotos en PDF</title>
+  <style>
+    :root {
+      --yellow: #ffd400;
+      --bg: #0b0b0b;
+      --panel: #171717;
+      --muted: #a6a6a6;
+      --border: #383838;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 32px 16px;
+      background: var(--bg);
+      color: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .container { width: 100%; max-width: 900px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 30px; }
+    .logo {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 58px; height: 58px; border: 2px solid var(--yellow);
+      border-radius: 14px; color: var(--yellow); font-weight: 900;
+      font-size: 22px; letter-spacing: -2px; margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .logo img { width: 100%; height: 100%; object-fit: contain; }
+    h1 { margin: 0; color: var(--yellow); font-size: clamp(24px, 5vw, 34px); }
+    header p { color: var(--muted); margin: 9px 0 0; }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 18px; padding: 24px;
+    }
+
+    /* Zona única de carga */
+    .dropzone {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; text-align: center; padding: 26px 16px;
+      border: 2px dashed #555; border-radius: 14px; background: #101010;
+      cursor: pointer; transition: border-color .15s, background .15s;
+    }
+    .dropzone.dragover { border-color: var(--yellow); background: #1a1700; }
+    .dropzone .big { font-size: 16px; font-weight: 700; }
+    .dropzone .small { color: var(--muted); font-size: 13px; }
+    .file-input { display: none; }
+    .choose {
+      display: inline-block; cursor: pointer; border: 1px solid var(--yellow);
+      color: var(--yellow); padding: 10px 14px; border-radius: 8px;
+      font-weight: 700; font-size: 13px;
+    }
+
+    .uploads {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px; margin-top: 18px;
+    }
+    .upload-card {
+      min-width: 0; border: 1px solid #2a2a2a; border-radius: 14px;
+      padding: 14px; background: #101010; position: relative;
+    }
+    .upload-card h2 { margin: 0 0 10px; font-size: 15px; }
+    .slot {
+      height: 200px; display: flex; align-items: center; justify-content: center;
+      border-radius: 10px; background: #1b1b1b; overflow: hidden;
+    }
+    .slot img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 7px; display: none; }
+    .placeholder { color: var(--muted); font-size: 14px; }
+    .remove {
+      position: absolute; top: 10px; right: 10px; display: none;
+      background: #2a2a2a; color: #fff; border: 0; border-radius: 6px;
+      padding: 5px 9px; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .remove:hover { background: #444; transform: none; }
+    .file-name {
+      color: var(--muted); font-size: 12px; margin: 8px 0 0;
+      overflow-wrap: anywhere; min-height: 14px;
+    }
+
+    /* Patente */
+    .plate-row {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      flex-wrap: wrap; margin-top: 22px;
+    }
+    .plate-row label { font-weight: 700; font-size: 14px; }
+    .plate-input {
+      width: 150px; padding: 11px 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: #0f0f0f; color: var(--yellow);
+      font-size: 18px; font-weight: 900; letter-spacing: 2px; text-align: center;
+      text-transform: uppercase;
+    }
+    .plate-input:focus { outline: none; border-color: var(--yellow); }
+    .plate-info { width: 100%; text-align: center; color: var(--muted); font-size: 12px; min-height: 14px; }
+
+    .actions { display: flex; justify-content: center; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+    button {
+      border: 0; border-radius: 10px; padding: 15px 28px;
+      background: var(--yellow); color: #111; font-size: 15px;
+      font-weight: 900; cursor: pointer; transition: transform .15s, opacity .15s;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .secondary { background: transparent; color: var(--yellow); border: 1px solid var(--yellow); }
+    .hint { text-align: center; color: var(--muted); font-size: 12px; margin: 16px 0 0; }
+    .status { min-height: 20px; text-align: center; margin-top: 14px; font-size: 14px; }
+    .status.ok { color: #7dff9b; }
+    @media (max-width: 650px) {
+      .uploads { grid-template-columns: 1fr; }
+      .panel { padding: 16px; }
+      .slot { height: 180px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <!-- LOGO: reemplazar el texto DR por <img src="..." alt="DeRentas"> -->
+      <div class="logo" id="logo">DR</div>
+      <h1>UNIR FOTOS EN PDF</h1>
+      <p>Cargá las dos fotos juntas y descargalas en un solo documento.</p>
+    </header>
+
+    <section class="panel">
+      <label class="dropzone" id="dropzone" for="photos">
+        <div class="big">Arrastrá las 2 fotos acá</div>
+        <div class="small">o tocá el botón y seleccioná las dos a la vez</div>
+        <span class="choose">SELECCIONAR FOTOS</span>
+        <input class="file-input" id="photos" type="file" accept="image/*" multiple>
+      </label>
+
+      <div class="uploads">
+        <article class="upload-card">
+          <h2>FOTO 1</h2>
+          <button class="remove" data-index="0" type="button">✕ Quitar</button>
+          <div class="slot">
+            <div class="placeholder">Sin foto</div>
+            <img alt="Vista previa de la foto 1">
+          </div>
+          <p class="file-name"></p>
+        </article>
+        <article class="upload-card">
+          <h2>FOTO 2</h2>
+          <button class="remove" data-index="1" type="button">✕ Quitar</button>
+          <div class="slot">
+            <div class="placeholder">Sin foto</div>
+            <img alt="Vista previa de la foto 2">
+          </div>
+          <p class="file-name"></p>
+        </article>
+      </div>
+
+      <div class="plate-row">
+        <label for="plate">PATENTE</label>
+        <input class="plate-input" id="plate" type="text" maxlength="9" placeholder="AB123CD" autocomplete="off">
+        <div class="plate-info" id="plateInfo"></div>
+      </div>
+
+      <div class="actions">
+        <button id="makePdf" disabled>GENERAR PDF</button>
+        <button id="resetBtn" class="secondary" type="button">EMPEZAR DE NUEVO</button>
+      </div>
+      <p class="hint">Cada foto va en una página del PDF. El archivo se llama con la patente del auto.</p>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script>
+    const files = [null, null];
+    const cards = [...document.querySelectorAll('.upload-card')].map((card) => ({
+      img: card.querySelector('img'),
+      placeholder: card.querySelector('.placeholder'),
+      name: card.querySelector('.file-name'),
+      remove: card.querySelector('.remove')
+    }));
+    const input = document.getElementById('photos');
+    const dropzone = document.getElementById('dropzone');
+    const plateInput = document.getElementById('plate');
+    const plateInfo = document.getElementById('plateInfo');
+    const statusEl = document.getElementById('status');
+    const makeBtn = document.getElementById('makePdf');
+
+    let plateEditedByUser = false;
+    let session = 0; // invalida resultados de OCR viejos al reiniciar
+
+    // ---------- Carga de fotos (una sola opción) ----------
+    input.addEventListener('change', () => {
+      addFiles(input.files);
+      input.value = '';
+    });
+
+    ['dragenter', 'dragover'].forEach((ev) => dropzone.addEventListener(ev, (e) => {
+      e.preventDefault(); dropzone.classList.add('dragover');
+    }));
+    ['dragleave', 'drop'].forEach((ev) => dropzone.addEventListener(ev, (e) => {
+      e.preventDefault(); dropzone.classList.remove('dragover');
+    }));
+    dropzone.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
+
+    function addFiles(list) {
+      const images = [...(list || [])].filter((f) => f.type.startsWith('image/'));
+      if (!images.length) {
+        setStatus('Elegí archivos de imagen válidos.');
+        return;
+      }
+      // Si se eligen 2 o más, reemplazan todo. Si se elige 1, completa el lugar libre.
+      if (images.length >= 2) {
+        files[0] = images[0];
+        files[1] = images[1];
+        if (images.length > 2) setStatus('Elegiste más de 2 fotos: se usan las dos primeras.');
+        else setStatus('');
+      } else {
+        const free = files[0] ? 1 : 0; // si ya están las dos, reemplaza la 2
+        files[free] = images[0];
+        setStatus(files[0] && files[1] ? '' : 'Falta la otra foto.');
+      }
+      renderPreviews();
+      detectPlate();
+    }
+
+    cards.forEach((c, i) => c.remove.addEventListener('click', (e) => {
+      e.preventDefault();
+      files[i] = null;
+      renderPreviews();
+      detectPlate();
+    }));
+
+    function renderPreviews() {
+      cards.forEach((c, i) => {
+        const f = files[i];
+        if (c.img.dataset.url) { URL.revokeObjectURL(c.img.dataset.url); delete c.img.dataset.url; }
+        if (f) {
+          const url = URL.createObjectURL(f);
+          c.img.src = url; c.img.dataset.url = url;
+          c.img.style.display = 'block';
+          c.placeholder.style.display = 'none';
+          c.name.textContent = f.name;
+          c.remove.style.display = 'block';
+        } else {
+          c.img.removeAttribute('src');
+          c.img.style.display = 'none';
+          c.placeholder.style.display = 'block';
+          c.name.textContent = '';
+          c.remove.style.display = 'none';
+        }
+      });
+      makeBtn.disabled = !files[0] || !files[1];
+    }
+
+    function setStatus(text, ok) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle('ok', !!ok);
+    }
+
+    // ---------- Patente ----------
+    plateInput.addEventListener('input', () => {
+      plateEditedByUser = true;
+      plateInput.value = plateInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '');
+      plateInfo.textContent = plateInput.value ? 'Patente cargada a mano.' : '';
+    });
+
+    const IGNORE_PREFIXES = ['IMG', 'DSC', 'PXL', 'VID', 'PIC', 'CAM', 'SCN', 'MVI', 'WA0'];
+
+    // Busca patente en el nombre del archivo (formato Mercosur AB123CD o viejo ABC123)
+    function plateFromName(name) {
+      const base = name.replace(/\.[^.]+$/, '').toUpperCase();
+      const sep = '[\\s\\-_.]?';
+      const mercosur = new RegExp(`(?:^|[^A-Z0-9])([A-Z]{2})${sep}(\\d{3})${sep}([A-Z]{2})(?=$|[^A-Z0-9])`);
+      const vieja = new RegExp(`(?:^|[^A-Z0-9])([A-Z]{3})${sep}(\\d{3})(?=$|[^A-Z0-9])`);
+      let m = base.match(mercosur);
+      if (m) return m[1] + m[2] + m[3];
+      m = base.match(vieja);
+      if (m && !IGNORE_PREFIXES.includes(m[1])) return m[1] + m[2];
+      return null;
+    }
+
+    // Corrige confusiones típicas del OCR según si el lugar es letra o número
+    const toLetter = { '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G', '4': 'A', '7': 'T' };
+    const toDigit = { 'O': '0', 'Q': '0', 'D': '0', 'I': '1', 'L': '1', 'Z': '2', 'S': '5', 'B': '8', 'G': '6', 'A': '4', 'T': '7' };
+    function fit(chunk, pattern) {
+      let out = '';
+      for (let i = 0; i < pattern.length; i++) {
+        const ch = chunk[i];
+        if (pattern[i] === 'L') {
+          const c = /[A-Z]/.test(ch) ? ch : toLetter[ch];
+          if (!c) return null; out += c;
+        } else {
+          const c = /\d/.test(ch) ? ch : toDigit[ch];
+          if (!c) return null; out += c;
+        }
+      }
+      return out;
+    }
+    function plateFromText(text) {
+      const lines = text.toUpperCase().split(/\n+/).map((l) => l.replace(/[^A-Z0-9]/g, '')).filter(Boolean);
+      // Primero exacto, después tolerando errores del OCR
+      for (const strict of [true, false]) {
+        for (const [pattern, len] of [['LLNNNLL', 7], ['LLLNNN', 6]]) {
+          for (const line of lines) {
+            if (len === 6 && line.length > 8) continue; // evita falsos positivos en textos largos
+            for (let i = 0; i + len <= line.length; i++) {
+              const chunk = line.slice(i, i + len);
+              const re = len === 7 ? /^[A-Z]{2}\d{3}[A-Z]{2}$/ : /^[A-Z]{3}\d{3}$/;
+              const r = strict ? (re.test(chunk) ? chunk : null) : fit(chunk, pattern);
+              if (r && !(len === 6 && IGNORE_PREFIXES.includes(r.slice(0, 3)))) return r;
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer una de las imágenes.')); };
+        img.src = url;
+      });
+    }
+
+    // Recorta una zona de la foto, la agranda y la pasa a blanco y negro con contraste
+    function prepCanvas(img, region) {
+      const sx = img.naturalWidth * region.x, sy = img.naturalHeight * region.y;
+      const sw = img.naturalWidth * region.w, sh = img.naturalHeight * region.h;
+      const scale = Math.min(2, 1800 / Math.max(sw, sh));
+      const c = document.createElement('canvas');
+      c.width = Math.round(sw * scale); c.height = Math.round(sh * scale);
+      const ctx = c.getContext('2d');
+      ctx.filter = 'grayscale(1) contrast(1.6)';
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+      return c;
+    }
+
+    async function plateFromImage(file, mySession) {
+      if (!window.Tesseract) return null;
+      const img = await loadImage(file);
+      const worker = await Tesseract.createWorker('eng');
+      try {
+        await worker.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ' });
+        const regions = [
+          { x: 0, y: 0, w: 1, h: 1 },          // foto entera
+          { x: 0.15, y: 0.4, w: 0.7, h: 0.6 }, // mitad de abajo, al centro (donde suele estar la patente)
+          { x: 0.25, y: 0.55, w: 0.5, h: 0.4 }
+        ];
+        for (const r of regions) {
+          if (mySession !== session) return null;
+          const { data } = await worker.recognize(prepCanvas(img, r));
+          const p = plateFromText(data.text || '');
+          if (p) return p;
+        }
+        return null;
+      } finally {
+        await worker.terminate();
+      }
+    }
+
+    async function detectPlate() {
+      const mySession = ++session;
+      if (plateEditedByUser && plateInput.value) return;
+
+      const loaded = files.filter(Boolean);
+      if (!loaded.length) { plateInput.value = ''; plateInfo.textContent = ''; return; }
+
+      // 1) Nombre del archivo
+      for (const f of loaded) {
+        const p = plateFromName(f.name);
+        if (p) {
+          plateInput.value = p;
+          plateInfo.textContent = 'Patente tomada del nombre del archivo.';
+          return;
+        }
+      }
+
+      // 2) Leer la foto
+      if (!window.Tesseract) {
+        plateInfo.textContent = 'No se pudo cargar el lector de patentes. Escribila a mano.';
+        return;
+      }
+      plateInfo.textContent = 'Buscando la patente en la foto...';
+      for (const f of loaded) {
+        try {
+          const p = await plateFromImage(f, mySession);
+          if (mySession !== session || (plateEditedByUser && plateInput.value)) return;
+          if (p) {
+            plateInput.value = p;
+            plateInfo.textContent = 'Patente leída de la foto. Revisá que esté bien.';
+            return;
+          }
+        } catch (e) { /* sigue con la otra foto */ }
+      }
+      if (mySession === session) {
+        plateInfo.textContent = 'No encontré la patente. Escribila a mano.';
+      }
+    }
+
+    // ---------- Reinicio ----------
+    function resetAll() {
+      session++;
+      files[0] = null; files[1] = null;
+      plateEditedByUser = false;
+      plateInput.value = '';
+      plateInfo.textContent = '';
+      renderPreviews();
+    }
+    document.getElementById('resetBtn').addEventListener('click', () => { resetAll(); setStatus(''); });
+
+    // ---------- PDF ----------
+    makeBtn.addEventListener('click', async () => {
+      makeBtn.disabled = true;
+      setStatus('Preparando el PDF...');
+
+      try {
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          throw new Error('No se pudo cargar el generador de PDF. Revisá tu conexión a internet e intentá de nuevo.');
+        }
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 10;
+
+        for (let i = 0; i < files.length; i++) {
+          const img = await loadImage(files[i]);
+          if (i > 0) pdf.addPage();
+
+          const canvas = document.createElement('canvas');
+          const maxSide = 2400;
+          const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+          canvas.width = Math.round(img.naturalWidth * scale);
+          canvas.height = Math.round(img.naturalHeight * scale);
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          const imageData = canvas.toDataURL('image/jpeg', 0.92);
+          const ratio = Math.min(
+            (pageWidth - margin * 2) / canvas.width,
+            (pageHeight - margin * 2) / canvas.height
+          );
+          const width = canvas.width * ratio;
+          const height = canvas.height * ratio;
+          const x = (pageWidth - width) / 2;
+          const y = (pageHeight - height) / 2;
+          pdf.addImage(imageData, 'JPEG', x, y, width, height);
+        }
+
+        const plate = plateInput.value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        const fileName = plate ? `${plate}.pdf` : 'fotos-unidas.pdf';
+        pdf.save(fileName);
+
+        // Se limpia sola para hacer una nueva
+        resetAll();
+        setStatus(`¡Listo! Se descargó ${fileName}. Ya podés cargar las fotos del próximo auto.`, true);
+      } catch (error) {
+        setStatus(error.message || 'Ocurrió un error al generar el PDF.');
+        makeBtn.disabled = !files[0] || !files[1];
+      }
+    });
+  </script>
+</body>
+</html>
