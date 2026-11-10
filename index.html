@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DERENTAS - Unir fotos en PDF</title>
+  <title>DERENTAS - Cédulas en PDF</title>
   <style>
     :root {
       --yellow: #ffd400;
@@ -113,6 +113,25 @@
       .panel { padding: 16px; }
       .slot { height: 180px; }
     }
+  
+    /* ---- Carga por carpeta ---- */
+    .dropzone { cursor: default; }
+    .choose input { display: none; }
+    .alt { color: var(--muted); font-size: 12px; }
+    .alt label { color: var(--yellow); cursor: pointer; text-decoration: underline; }
+    .summary { text-align: center; color: var(--muted); font-size: 13px; margin-top: 18px; min-height: 16px; }
+    .list { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px; border: 1px solid #2a2a2a; border-radius: 12px; background: #101010; }
+    .row.bad { border-color: #7a3b3b; }
+    .thumbs { display: flex; gap: 8px; }
+    .thumb { width: 92px; height: 64px; border-radius: 8px; background: #1b1b1b; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #ff8a8a; font-size: 11px; text-align: center; }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .rinfo { flex: 1; min-width: 170px; }
+    .rname { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; margin-bottom: 6px; }
+    .row .plate-input { width: 130px; font-size: 15px; padding: 8px; }
+    .rnote { color: var(--muted); font-size: 11px; margin-top: 4px; min-height: 13px; }
+    .rbtns { display: flex; gap: 8px; }
+    .mini { padding: 9px 14px; font-size: 12px; border-radius: 8px; }
   </style>
 </head>
 <body>
@@ -120,150 +139,51 @@
     <header>
       <!-- LOGO: reemplazar el texto DR por <img src="..." alt="DeRentas"> -->
       <div class="logo" id="logo">DR</div>
-      <h1>UNIR FOTOS EN PDF</h1>
-      <p>Cargá las dos fotos juntas y descargalas en un solo documento.</p>
+      <h1>CÉDULAS A PDF</h1>
+      <p>Cargá la carpeta con las cédulas: cada una se une sola con su dorso en un PDF.</p>
     </header>
 
     <section class="panel">
-      <label class="dropzone" id="dropzone" for="photos">
-        <div class="big">Arrastrá las 2 fotos acá</div>
-        <div class="small">o tocá el botón y seleccioná las dos a la vez</div>
-        <span class="choose">SELECCIONAR FOTOS</span>
-        <input class="file-input" id="photos" type="file" accept="image/*" multiple>
-      </label>
-
-      <div class="uploads">
-        <article class="upload-card">
-          <h2>FOTO 1</h2>
-          <button class="remove" data-index="0" type="button">✕ Quitar</button>
-          <div class="slot">
-            <div class="placeholder">Sin foto</div>
-            <img alt="Vista previa de la foto 1">
-          </div>
-          <p class="file-name"></p>
-        </article>
-        <article class="upload-card">
-          <h2>FOTO 2</h2>
-          <button class="remove" data-index="1" type="button">✕ Quitar</button>
-          <div class="slot">
-            <div class="placeholder">Sin foto</div>
-            <img alt="Vista previa de la foto 2">
-          </div>
-          <p class="file-name"></p>
-        </article>
+      <div class="dropzone" id="dropzone">
+        <div class="big">Arrastrá la carpeta con las cédulas acá</div>
+        <div class="small">o elegila con el botón (se leen también las subcarpetas)</div>
+        <label class="choose">SELECCIONAR CARPETA
+          <input id="folder" type="file" webkitdirectory directory multiple>
+        </label>
+        <div class="alt">¿Archivos sueltos? <label>Elegir imágenes<input class="file-input" id="loose" type="file" accept="image/*" multiple></label></div>
       </div>
 
-      <div class="plate-row">
-        <label for="plate">PATENTE</label>
-        <input class="plate-input" id="plate" type="text" maxlength="9" placeholder="AB123CD" autocomplete="off">
-        <div class="plate-info" id="plateInfo"></div>
-      </div>
+      <div class="summary" id="summary"></div>
+      <div class="list" id="list"></div>
 
       <div class="actions">
-        <button id="makePdf" disabled>GENERAR PDF</button>
+        <button id="zipBtn" disabled>DESCARGAR TODO (ZIP)</button>
         <button id="resetBtn" class="secondary" type="button">EMPEZAR DE NUEVO</button>
       </div>
-      <p class="hint">Cada foto va en una página del PDF. El archivo se llama con la patente del auto.</p>
+      <p class="hint">Cada cédula se une con el archivo cuyo nombre dice «dorso»: primero va el frente y después el dorso.<br>
+        Sirve una subcarpeta por auto (frente + dorso) o nombres como AB123CD.jpg y AB123CD_dorso.jpg. El PDF se llama con la patente.</p>
       <div class="status" id="status" role="status" aria-live="polite"></div>
     </section>
   </main>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
-    const files = [null, null];
-    const cards = [...document.querySelectorAll('.upload-card')].map((card) => ({
-      img: card.querySelector('img'),
-      placeholder: card.querySelector('.placeholder'),
-      name: card.querySelector('.file-name'),
-      remove: card.querySelector('.remove')
-    }));
-    const input = document.getElementById('photos');
-    const dropzone = document.getElementById('dropzone');
-    const plateInput = document.getElementById('plate');
-    const plateInfo = document.getElementById('plateInfo');
-    const statusEl = document.getElementById('status');
-    const makeBtn = document.getElementById('makePdf');
+    const $ = (id) => document.getElementById(id);
+    const dropzone = $('dropzone'), listEl = $('list'), statusEl = $('status');
+    const zipBtn = $('zipBtn'), summaryEl = $('summary');
 
-    let plateEditedByUser = false;
-    let session = 0; // invalida resultados de OCR viejos al reiniciar
-
-    // ---------- Carga de fotos (una sola opción) ----------
-    input.addEventListener('change', () => {
-      addFiles(input.files);
-      input.value = '';
-    });
-
-    ['dragenter', 'dragover'].forEach((ev) => dropzone.addEventListener(ev, (e) => {
-      e.preventDefault(); dropzone.classList.add('dragover');
-    }));
-    ['dragleave', 'drop'].forEach((ev) => dropzone.addEventListener(ev, (e) => {
-      e.preventDefault(); dropzone.classList.remove('dragover');
-    }));
-    dropzone.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
-
-    function addFiles(list) {
-      const images = [...(list || [])].filter((f) => f.type.startsWith('image/'));
-      if (!images.length) {
-        setStatus('Elegí archivos de imagen válidos.');
-        return;
-      }
-      // Si se eligen 2 o más, reemplazan todo. Si se elige 1, completa el lugar libre.
-      if (images.length >= 2) {
-        files[0] = images[0];
-        files[1] = images[1];
-        if (images.length > 2) setStatus('Elegiste más de 2 fotos: se usan las dos primeras.');
-        else setStatus('');
-      } else {
-        const free = files[0] ? 1 : 0; // si ya están las dos, reemplaza la 2
-        files[free] = images[0];
-        setStatus(files[0] && files[1] ? '' : 'Falta la otra foto.');
-      }
-      renderPreviews();
-      detectPlate();
-    }
-
-    cards.forEach((c, i) => c.remove.addEventListener('click', (e) => {
-      e.preventDefault();
-      files[i] = null;
-      renderPreviews();
-      detectPlate();
-    }));
-
-    function renderPreviews() {
-      cards.forEach((c, i) => {
-        const f = files[i];
-        if (c.img.dataset.url) { URL.revokeObjectURL(c.img.dataset.url); delete c.img.dataset.url; }
-        if (f) {
-          const url = URL.createObjectURL(f);
-          c.img.src = url; c.img.dataset.url = url;
-          c.img.style.display = 'block';
-          c.placeholder.style.display = 'none';
-          c.name.textContent = f.name;
-          c.remove.style.display = 'block';
-        } else {
-          c.img.removeAttribute('src');
-          c.img.style.display = 'none';
-          c.placeholder.style.display = 'block';
-          c.name.textContent = '';
-          c.remove.style.display = 'none';
-        }
-      });
-      makeBtn.disabled = !files[0] || !files[1];
-    }
+    let records = [];   // una por cédula: { dir, front, back, frontName, backName, plate, edited, note }
+    let urls = [];      // object URLs de las miniaturas
+    let session = 0;    // invalida el OCR viejo al cargar otra carpeta o reiniciar
 
     function setStatus(text, ok) {
       statusEl.textContent = text;
       statusEl.classList.toggle('ok', !!ok);
     }
 
-    // ---------- Patente ----------
-    plateInput.addEventListener('input', () => {
-      plateEditedByUser = true;
-      plateInput.value = plateInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '');
-      plateInfo.textContent = plateInput.value ? 'Patente cargada a mano.' : '';
-    });
-
+    // ---------- Detección de patente (sin cambios) ----------
     const IGNORE_PREFIXES = ['IMG', 'DSC', 'PXL', 'VID', 'PIC', 'CAM', 'SCN', 'MVI', 'WA0'];
 
     // Busca patente en el nombre del archivo (formato Mercosur AB123CD o viejo ABC123)
@@ -338,133 +258,296 @@
       return c;
     }
 
-    async function plateFromImage(file, mySession) {
-      if (!window.Tesseract) return null;
-      const img = await loadImage(file);
-      const worker = await Tesseract.createWorker('eng');
-      try {
-        await worker.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ' });
-        const regions = [
-          { x: 0, y: 0, w: 1, h: 1 },          // foto entera
-          { x: 0.15, y: 0.4, w: 0.7, h: 0.6 }, // mitad de abajo, al centro (donde suele estar la patente)
-          { x: 0.25, y: 0.55, w: 0.5, h: 0.4 }
-        ];
-        for (const r of regions) {
-          if (mySession !== session) return null;
-          const { data } = await worker.recognize(prepCanvas(img, r));
-          const p = plateFromText(data.text || '');
-          if (p) return p;
-        }
-        return null;
-      } finally {
-        await worker.terminate();
+
+    // ---------- Carga (carpeta, arrastrar y soltar, o archivos sueltos) ----------
+    const fromInput = (e) => {
+      handleList([...e.target.files].map((f) => ({ file: f, path: f.webkitRelativePath || f.name })));
+      e.target.value = '';
+    };
+    $('folder').addEventListener('change', fromInput);
+    $('loose').addEventListener('change', fromInput);
+
+    ['dragenter', 'dragover'].forEach((ev) => dropzone.addEventListener(ev, (e) => {
+      e.preventDefault(); dropzone.classList.add('dragover');
+    }));
+    dropzone.addEventListener('dragleave', (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); });
+    dropzone.addEventListener('drop', async (e) => {
+      e.preventDefault(); dropzone.classList.remove('dragover');
+      // las entradas hay que leerlas antes de cualquier await
+      const entries = [...e.dataTransfer.items].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+      const out = [];
+      setStatus('Leyendo carpeta...');
+      try { for (const en of entries) await walk(en, out); }
+      catch (err) { setStatus('No se pudo leer la carpeta. Probá con el botón SELECCIONAR CARPETA.'); return; }
+      handleList(out);
+    });
+
+    async function walk(entry, out) {
+      if (entry.isFile) {
+        const file = await new Promise((res, rej) => entry.file(res, rej));
+        out.push({ file, path: entry.fullPath.replace(/^\//, '') });
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        let batch;
+        do {
+          batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+          for (const en of batch) await walk(en, out);
+        } while (batch.length);
       }
     }
 
-    async function detectPlate() {
-      const mySession = ++session;
-      if (plateEditedByUser && plateInput.value) return;
+    // ---------- Emparejar cédula + dorso ----------
+    const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const baseOf = (n) => n.replace(/\.[^.]+$/, '');
+    const isBack = (n) => /dorso|reverso/.test(norm(n));
+    // nombre sin las palabras dorso/frente/cedula: sirve para saber qué dorso va con qué cédula
+    const keyOf = (n) => norm(baseOf(n)).replace(/dorso|reverso|frente|frontal|anverso|cedula/g, '').replace(/[^a-z0-9]/g, '');
+    const natural = (a, b) => a.localeCompare(b, 'es', { numeric: true });
 
-      const loaded = files.filter(Boolean);
-      if (!loaded.length) { plateInput.value = ''; plateInfo.textContent = ''; return; }
-
-      // 1) Nombre del archivo
-      for (const f of loaded) {
-        const p = plateFromName(f.name);
-        if (p) {
-          plateInput.value = p;
-          plateInfo.textContent = 'Patente tomada del nombre del archivo.';
-          return;
+    function pairItems(list) {
+      const dirs = new Map();
+      for (const it of list) {
+        const parts = it.path.split('/');
+        const name = parts.pop();
+        const dir = parts.join('/');
+        if (!dirs.has(dir)) dirs.set(dir, []);
+        dirs.get(dir).push({ file: it.file, name });
+      }
+      const mk = (dir, f, b) => ({
+        dir, front: f && f.file, back: b && b.file,
+        frontName: f ? f.name : '', backName: b ? b.name : '',
+        plate: '', edited: false, note: ''
+      });
+      const out = [];
+      for (const dir of [...dirs.keys()].sort(natural)) {
+        const arr = dirs.get(dir).sort((a, b) => natural(a.name, b.name));
+        let backs = arr.filter((x) => isBack(x.name));
+        let fronts = arr.filter((x) => !isBack(x.name));
+        const pairs = [];
+        for (const b of [...backs]) {
+          const i = fronts.findIndex((f) => keyOf(f.name) === keyOf(b.name));
+          if (i >= 0) { pairs.push([fronts[i], b]); fronts.splice(i, 1); backs.splice(backs.indexOf(b), 1); }
         }
+        // una sola cédula y un solo dorso en la carpeta: van juntos
+        if (backs.length === 1 && fronts.length === 1) { pairs.push([fronts[0], backs[0]]); fronts = []; backs = []; }
+        pairs.forEach(([f, b]) => out.push(mk(dir, f, b)));
+        fronts.forEach((f) => out.push(mk(dir, f, null)));
+        backs.forEach((b) => out.push(mk(dir, null, b)));
       }
-
-      // 2) Leer la foto
-      if (!window.Tesseract) {
-        plateInfo.textContent = 'No se pudo cargar el lector de patentes. Escribila a mano.';
-        return;
-      }
-      plateInfo.textContent = 'Buscando la patente en la foto...';
-      for (const f of loaded) {
-        try {
-          const p = await plateFromImage(f, mySession);
-          if (mySession !== session || (plateEditedByUser && plateInput.value)) return;
-          if (p) {
-            plateInput.value = p;
-            plateInfo.textContent = 'Patente leída de la foto. Revisá que esté bien.';
-            return;
-          }
-        } catch (e) { /* sigue con la otra foto */ }
-      }
-      if (mySession === session) {
-        plateInfo.textContent = 'No encontré la patente. Escribila a mano.';
-      }
+      return out;
     }
 
-    // ---------- Reinicio ----------
-    function resetAll() {
+    function handleList(list) {
+      const images = list.filter((x) => x.file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(x.file.name));
+      if (!images.length) { setStatus('No encontré imágenes en lo que elegiste.'); return; }
       session++;
-      files[0] = null; files[1] = null;
-      plateEditedByUser = false;
-      plateInput.value = '';
-      plateInfo.textContent = '';
-      renderPreviews();
+      records = pairItems(images);
+      records.forEach((r) => {
+        const folder = r.dir.split('/').pop();
+        for (const s of [folder, r.frontName, r.backName]) {
+          const p = s && plateFromName(s);
+          if (p) { r.plate = p; r.note = 'Patente tomada del nombre.'; break; }
+        }
+      });
+      render();
+      setStatus('');
+      runOcr(session);
     }
-    document.getElementById('resetBtn').addEventListener('click', () => { resetAll(); setStatus(''); });
+
+    // ---------- Lista ----------
+    const isComplete = (r) => !!(r.front && r.back);
+
+    function thumb(file, missing) {
+      const d = document.createElement('div');
+      d.className = 'thumb';
+      if (file) {
+        const url = URL.createObjectURL(file);
+        urls.push(url);
+        const img = document.createElement('img');
+        img.src = url; img.alt = '';
+        d.appendChild(img);
+      } else d.textContent = missing;
+      return d;
+    }
+
+    function render() {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      urls = [];
+      listEl.innerHTML = '';
+      records.forEach((r) => {
+        const row = document.createElement('div');
+        row.className = 'row' + (isComplete(r) ? '' : ' bad');
+
+        const thumbs = document.createElement('div');
+        thumbs.className = 'thumbs';
+        thumbs.append(thumb(r.front, 'Falta la cédula'), thumb(r.back, 'Falta el dorso'));
+
+        const info = document.createElement('div');
+        info.className = 'rinfo';
+        const name = document.createElement('div');
+        name.className = 'rname';
+        name.textContent = (r.dir ? r.dir + ' / ' : '') + (r.frontName || r.backName);
+        info.appendChild(name);
+        if (isComplete(r)) {
+          r.input = document.createElement('input');
+          r.input.className = 'plate-input';
+          r.input.maxLength = 9; r.input.placeholder = 'AB123CD'; r.input.autocomplete = 'off';
+          r.input.value = r.plate;
+          r.input.addEventListener('input', () => {
+            r.edited = true;
+            r.input.value = r.input.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '');
+            r.plate = r.input.value;
+            setNote(r, r.plate ? 'Patente cargada a mano.' : '');
+          });
+          info.appendChild(r.input);
+        }
+        r.noteEl = document.createElement('div');
+        r.noteEl.className = 'rnote';
+        r.noteEl.textContent = isComplete(r) ? r.note : (r.front ? 'No encontré el dorso de esta cédula.' : 'No encontré la cédula de este dorso.');
+        info.appendChild(r.noteEl);
+
+        const btns = document.createElement('div');
+        btns.className = 'rbtns';
+        if (isComplete(r)) {
+          const dl = document.createElement('button');
+          dl.className = 'mini'; dl.textContent = 'PDF';
+          dl.addEventListener('click', async () => {
+            dl.disabled = true;
+            try { download(await buildPdf(r), pdfName(r, new Set())); }
+            catch (err) { setStatus(err.message || 'Ocurrió un error al generar el PDF.'); }
+            dl.disabled = false;
+          });
+          btns.appendChild(dl);
+        }
+        const rm = document.createElement('button');
+        rm.className = 'mini secondary'; rm.type = 'button'; rm.textContent = '✕';
+        rm.title = 'Quitar';
+        rm.addEventListener('click', () => { records.splice(records.indexOf(r), 1); render(); });
+        btns.appendChild(rm);
+
+        row.append(thumbs, info, btns);
+        listEl.appendChild(row);
+      });
+
+      const ok = records.filter(isComplete).length;
+      const bad = records.length - ok;
+      summaryEl.textContent = records.length
+        ? `${ok} cédula${ok === 1 ? '' : 's'} lista${ok === 1 ? '' : 's'} con su dorso` + (bad ? ` · ${bad} sin pareja (no se incluyen)` : '')
+        : '';
+      zipBtn.disabled = !ok;
+    }
+
+    function setNote(r, text) {
+      r.note = text;
+      if (r.noteEl) r.noteEl.textContent = text;
+    }
+
+    // ---------- Leer patente con OCR (solo las que no la tienen por nombre) ----------
+    async function runOcr(my) {
+      const todo = records.filter((r) => isComplete(r) && !r.plate);
+      if (!todo.length) return;
+      if (!window.Tesseract) { todo.forEach((r) => setNote(r, 'No se pudo cargar el lector. Escribila a mano.')); return; }
+      let worker;
+      try {
+        worker = await Tesseract.createWorker('eng');
+        await worker.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ' });
+        for (const r of todo) {
+          if (my !== session) return;
+          setNote(r, 'Buscando la patente en la foto...');
+          let p = null;
+          for (const f of [r.front, r.back]) {
+            try {
+              const img = await loadImage(f);
+              const { data } = await worker.recognize(prepCanvas(img, { x: 0, y: 0, w: 1, h: 1 }));
+              p = plateFromText(data.text || '');
+            } catch (e) { /* sigue con la otra foto */ }
+            if (p) break;
+          }
+          if (my !== session) return;
+          if (p && !r.edited) {
+            r.plate = p;
+            if (r.input) r.input.value = p;
+            setNote(r, 'Patente leída de la foto. Revisá que esté bien.');
+          } else if (!r.plate) setNote(r, 'No encontré la patente. Escribila a mano.');
+        }
+      } finally {
+        if (worker) worker.terminate();
+      }
+    }
 
     // ---------- PDF ----------
-    makeBtn.addEventListener('click', async () => {
-      makeBtn.disabled = true;
-      setStatus('Preparando el PDF...');
+    async function toJpeg(file) {
+      const img = await loadImage(file);
+      const scale = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * scale);
+      c.height = Math.round(img.naturalHeight * scale);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      return { data: c.toDataURL('image/jpeg', 0.92), w: c.width, h: c.height };
+    }
 
-      try {
-        if (!window.jspdf || !window.jspdf.jsPDF) {
-          throw new Error('No se pudo cargar el generador de PDF. Revisá tu conexión a internet e intentá de nuevo.');
-        }
-
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 10;
-
-        for (let i = 0; i < files.length; i++) {
-          const img = await loadImage(files[i]);
-          if (i > 0) pdf.addPage();
-
-          const canvas = document.createElement('canvas');
-          const maxSide = 2400;
-          const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-          canvas.width = Math.round(img.naturalWidth * scale);
-          canvas.height = Math.round(img.naturalHeight * scale);
-          const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-          const imageData = canvas.toDataURL('image/jpeg', 0.92);
-          const ratio = Math.min(
-            (pageWidth - margin * 2) / canvas.width,
-            (pageHeight - margin * 2) / canvas.height
-          );
-          const width = canvas.width * ratio;
-          const height = canvas.height * ratio;
-          const x = (pageWidth - width) / 2;
-          const y = (pageHeight - height) / 2;
-          pdf.addImage(imageData, 'JPEG', x, y, width, height);
-        }
-
-        const plate = plateInput.value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-        const fileName = plate ? `${plate}.pdf` : 'fotos-unidas.pdf';
-        pdf.save(fileName);
-
-        // Se limpia sola para hacer una nueva
-        resetAll();
-        setStatus(`¡Listo! Se descargó ${fileName}. Ya podés cargar las fotos del próximo auto.`, true);
-      } catch (error) {
-        setStatus(error.message || 'Ocurrió un error al generar el PDF.');
-        makeBtn.disabled = !files[0] || !files[1];
+    async function buildPdf(r) {
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+        throw new Error('No se pudo cargar el generador de PDF. Revisá tu conexión a internet e intentá de nuevo.');
       }
+      const pdf = new window.jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+      const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(), m = 10;
+      const pages = [r.front, r.back]; // frente y después dorso
+      for (let i = 0; i < pages.length; i++) {
+        const im = await toJpeg(pages[i]);
+        if (i > 0) pdf.addPage();
+        const k = Math.min((pw - m * 2) / im.w, (ph - m * 2) / im.h);
+        const w = im.w * k, h = im.h * k;
+        pdf.addImage(im.data, 'JPEG', (pw - w) / 2, (ph - h) / 2, w, h);
+      }
+      return pdf.output('blob');
+    }
+
+    function pdfName(r, used) {
+      const plate = r.plate.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+      const base = plate || (r.dir.split('/').pop() || baseOf(r.frontName)).replace(/[^\w\- ]+/g, '').trim() || 'cedula';
+      let name = base, n = 2;
+      while (used.has(name)) name = `${base}-${n++}`;
+      used.add(name);
+      return name + '.pdf';
+    }
+
+    function download(blob, name) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+
+    zipBtn.addEventListener('click', async () => {
+      const ready = records.filter(isComplete);
+      if (!ready.length) return;
+      if (!window.JSZip) { setStatus('No se pudo cargar el generador de ZIP. Revisá tu conexión e intentá de nuevo.'); return; }
+      zipBtn.disabled = true;
+      try {
+        const zip = new JSZip();
+        const used = new Set();
+        for (let i = 0; i < ready.length; i++) {
+          setStatus(`Generando PDF ${i + 1} de ${ready.length}...`);
+          zip.file(pdfName(ready[i], used), await buildPdf(ready[i]));
+        }
+        setStatus('Armando el ZIP...');
+        download(await zip.generateAsync({ type: 'blob' }), 'cedulas.zip');
+        setStatus(`¡Listo! Se descargó cedulas.zip con ${ready.length} PDF.`, true);
+      } catch (err) {
+        setStatus(err.message || 'Ocurrió un error al generar los PDF.');
+      }
+      zipBtn.disabled = !records.some(isComplete);
     });
+
+    // ---------- Reinicio ----------
+    $('resetBtn').addEventListener('click', () => { session++; records = []; render(); setStatus(''); });
   </script>
 </body>
 </html>
