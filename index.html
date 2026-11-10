@@ -132,6 +132,10 @@
     .rnote { color: var(--muted); font-size: 11px; margin-top: 4px; min-height: 13px; }
     .rbtns { display: flex; gap: 8px; }
     .mini { padding: 9px 14px; font-size: 12px; border-radius: 8px; }
+    /* ---- Pestañas ---- */
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .tab { flex: 1; padding: 13px 8px; font-size: 13px; background: transparent; color: var(--yellow); border: 1px solid var(--border); }
+    .tab.active { background: var(--yellow); color: #111; border-color: var(--yellow); }
   </style>
 </head>
 <body>
@@ -140,10 +144,16 @@
       <!-- LOGO: reemplazar el texto DR por <img src="..." alt="DeRentas"> -->
       <div class="logo" id="logo">DR</div>
       <h1>CÉDULAS A PDF</h1>
-      <p>Cargá la carpeta con las cédulas y el dorso: se arma un PDF por cada cédula.</p>
+      <p>Elegí cómo cargar: una carpeta de cédulas o 2 fotos sueltas.</p>
     </header>
 
+    <div class="tabs">
+      <button type="button" class="tab active" data-mode="folder">CARPETA DE CÉDULAS</button>
+      <button type="button" class="tab" data-mode="loose">2 FOTOS SUELTAS</button>
+    </div>
+
     <section class="panel">
+      <div id="modeFolder">
       <div class="dropzone" id="dropzone">
         <div class="big">Arrastrá la carpeta con las cédulas acá</div>
         <div class="small">o elegila con el botón (se leen también las subcarpetas)</div>
@@ -162,6 +172,47 @@
       </div>
       <p class="hint">Poné en la carpeta todas las cédulas y una sola imagen cuyo nombre diga «dorso» (por ejemplo dorso.jpg).<br>
         Ese dorso se une a cada cédula: primero va el frente y después el dorso. El PDF se llama con la patente.</p>
+      </div>
+
+      <div id="modeLoose" hidden>
+        <label class="dropzone" id="dz2" for="photos" style="cursor:pointer">
+          <div class="big">Arrastrá las 2 fotos acá</div>
+          <div class="small">o tocá el botón y seleccioná las dos a la vez</div>
+          <span class="choose">SELECCIONAR FOTOS</span>
+          <input class="file-input" id="photos" type="file" accept="image/*" multiple>
+        </label>
+        <div class="uploads">
+        <article class="upload-card">
+          <h2>FOTO 1</h2>
+          <button class="remove" type="button">✕ Quitar</button>
+          <div class="slot">
+            <div class="placeholder">Sin foto</div>
+            <img alt="Vista previa de la foto 1">
+          </div>
+          <p class="file-name"></p>
+        </article>
+        <article class="upload-card">
+          <h2>FOTO 2</h2>
+          <button class="remove" type="button">✕ Quitar</button>
+          <div class="slot">
+            <div class="placeholder">Sin foto</div>
+            <img alt="Vista previa de la foto 2">
+          </div>
+          <p class="file-name"></p>
+        </article>
+        </div>
+        <div class="plate-row">
+          <label for="plate">PATENTE</label>
+          <input class="plate-input" id="plate" type="text" maxlength="9" placeholder="AB123CD" autocomplete="off">
+          <div class="plate-info" id="plateInfo"></div>
+        </div>
+        <div class="actions">
+          <button id="makePdf" disabled>UNIR EN PDF</button>
+          <button id="resetLoose" class="secondary" type="button">EMPEZAR DE NUEVO</button>
+        </div>
+        <p class="hint">Las dos fotos se unen tal cual las cargás: la 1 en la primera página y la 2 en la segunda. El archivo se llama con la patente.</p>
+      </div>
+
       <div class="status" id="status" role="status" aria-live="polite"></div>
     </section>
   </main>
@@ -552,6 +603,141 @@
         setStatus(err.message || 'Ocurrió un error al generar los PDF.');
       }
       zipBtn.disabled = !records.some(isComplete);
+    });
+
+    // ---------- Pestañas ----------
+    document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
+      $('modeFolder').hidden = t.dataset.mode !== 'folder';
+      $('modeLoose').hidden = t.dataset.mode !== 'loose';
+      setStatus('');
+    }));
+
+    // ---------- 2 fotos sueltas: se unen directo en un PDF ----------
+    const looseFiles = [null, null];
+    const lc = [...document.querySelectorAll('#modeLoose .upload-card')].map((card) => ({
+      img: card.querySelector('img'),
+      placeholder: card.querySelector('.placeholder'),
+      name: card.querySelector('.file-name'),
+      remove: card.querySelector('.remove')
+    }));
+    const plateInput = $('plate'), plateInfo = $('plateInfo'), makeBtn = $('makePdf'), dz2 = $('dz2');
+    let plateEdited = false, looseSession = 0;
+
+    $('photos').addEventListener('change', (e) => { addLoose(e.target.files); e.target.value = ''; });
+    ['dragenter', 'dragover'].forEach((ev) => dz2.addEventListener(ev, (e) => { e.preventDefault(); dz2.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach((ev) => dz2.addEventListener(ev, (e) => { e.preventDefault(); dz2.classList.remove('dragover'); }));
+    dz2.addEventListener('drop', (e) => addLoose(e.dataTransfer.files));
+
+    function addLoose(list) {
+      const images = [...(list || [])].filter((f) => f.type.startsWith('image/'));
+      if (!images.length) { setStatus('Elegí archivos de imagen válidos.'); return; }
+      if (images.length >= 2) {
+        looseFiles[0] = images[0]; looseFiles[1] = images[1];
+        setStatus(images.length > 2 ? 'Elegiste más de 2 fotos: se usan las dos primeras.' : '');
+      } else {
+        const free = looseFiles[0] ? 1 : 0; // si ya están las dos, reemplaza la 2
+        looseFiles[free] = images[0];
+        setStatus(looseFiles[0] && looseFiles[1] ? '' : 'Falta la otra foto.');
+      }
+      renderLoose();
+      detectLoosePlate();
+    }
+
+    lc.forEach((c, i) => c.remove.addEventListener('click', (e) => {
+      e.preventDefault();
+      looseFiles[i] = null;
+      renderLoose();
+      detectLoosePlate();
+    }));
+
+    function renderLoose() {
+      lc.forEach((c, i) => {
+        const f = looseFiles[i];
+        if (c.img.dataset.url) { URL.revokeObjectURL(c.img.dataset.url); delete c.img.dataset.url; }
+        if (f) {
+          const url = URL.createObjectURL(f);
+          c.img.src = url; c.img.dataset.url = url;
+          c.img.style.display = 'block';
+          c.placeholder.style.display = 'none';
+          c.name.textContent = f.name;
+          c.remove.style.display = 'block';
+        } else {
+          c.img.removeAttribute('src');
+          c.img.style.display = 'none';
+          c.placeholder.style.display = 'block';
+          c.name.textContent = '';
+          c.remove.style.display = 'none';
+        }
+      });
+      makeBtn.disabled = !looseFiles[0] || !looseFiles[1];
+    }
+
+    plateInput.addEventListener('input', () => {
+      plateEdited = true;
+      plateInput.value = plateInput.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '');
+      plateInfo.textContent = plateInput.value ? 'Patente cargada a mano.' : '';
+    });
+
+    async function detectLoosePlate() {
+      const my = ++looseSession;
+      if (plateEdited && plateInput.value) return;
+      const loaded = looseFiles.filter(Boolean);
+      if (!loaded.length) { plateInput.value = ''; plateInfo.textContent = ''; return; }
+      for (const f of loaded) {
+        const p = plateFromName(f.name);
+        if (p) { plateInput.value = p; plateInfo.textContent = 'Patente tomada del nombre del archivo.'; return; }
+      }
+      if (!window.Tesseract) { plateInfo.textContent = 'No se pudo cargar el lector de patentes. Escribila a mano.'; return; }
+      plateInfo.textContent = 'Buscando la patente en la foto...';
+      const regions = [
+        { x: 0, y: 0, w: 1, h: 1 },
+        { x: 0.15, y: 0.4, w: 0.7, h: 0.6 },
+        { x: 0.25, y: 0.55, w: 0.5, h: 0.4 }
+      ];
+      let worker;
+      try {
+        worker = await Tesseract.createWorker('eng');
+        await worker.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ' });
+        for (const f of loaded) {
+          let img;
+          try { img = await loadImage(f); } catch (e) { continue; }
+          for (const r of regions) {
+            if (my !== looseSession) return;
+            let p = null;
+            try { p = plateFromText((await worker.recognize(prepCanvas(img, r))).data.text || ''); } catch (e) { /* sigue */ }
+            if (my !== looseSession || (plateEdited && plateInput.value)) return;
+            if (p) { plateInput.value = p; plateInfo.textContent = 'Patente leída de la foto. Revisá que esté bien.'; return; }
+          }
+        }
+        if (my === looseSession) plateInfo.textContent = 'No encontré la patente. Escribila a mano.';
+      } finally {
+        if (worker) worker.terminate();
+      }
+    }
+
+    function resetLoose() {
+      looseSession++;
+      looseFiles[0] = null; looseFiles[1] = null;
+      plateEdited = false;
+      plateInput.value = ''; plateInfo.textContent = '';
+      renderLoose();
+    }
+    $('resetLoose').addEventListener('click', () => { resetLoose(); setStatus(''); });
+
+    makeBtn.addEventListener('click', async () => {
+      makeBtn.disabled = true;
+      setStatus('Preparando el PDF...');
+      try {
+        const r = { front: looseFiles[0], back: looseFiles[1], dir: '', frontName: 'fotos-unidas', plate: plateInput.value };
+        const name = pdfName(r, new Set());
+        download(await buildPdf(r), name);
+        resetLoose();
+        setStatus(`¡Listo! Se descargó ${name}. Ya podés cargar las próximas fotos.`, true);
+      } catch (err) {
+        setStatus(err.message || 'Ocurrió un error al generar el PDF.');
+        makeBtn.disabled = !looseFiles[0] || !looseFiles[1];
+      }
     });
 
     // ---------- Reinicio ----------
