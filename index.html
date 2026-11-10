@@ -140,7 +140,7 @@
       <!-- LOGO: reemplazar el texto DR por <img src="..." alt="DeRentas"> -->
       <div class="logo" id="logo">DR</div>
       <h1>CÉDULAS A PDF</h1>
-      <p>Cargá la carpeta con las cédulas: cada una se une sola con su dorso en un PDF.</p>
+      <p>Cargá la carpeta con las cédulas y el dorso: se arma un PDF por cada cédula.</p>
     </header>
 
     <section class="panel">
@@ -160,8 +160,8 @@
         <button id="zipBtn" disabled>DESCARGAR TODO (ZIP)</button>
         <button id="resetBtn" class="secondary" type="button">EMPEZAR DE NUEVO</button>
       </div>
-      <p class="hint">Cada cédula se une con el archivo cuyo nombre dice «dorso»: primero va el frente y después el dorso.<br>
-        Sirve una subcarpeta por auto (frente + dorso) o nombres como AB123CD.jpg y AB123CD_dorso.jpg. El PDF se llama con la patente.</p>
+      <p class="hint">Poné en la carpeta todas las cédulas y una sola imagen cuyo nombre diga «dorso» (por ejemplo dorso.jpg).<br>
+        Ese dorso se une a cada cédula: primero va el frente y después el dorso. El PDF se llama con la patente.</p>
       <div class="status" id="status" role="status" aria-live="polite"></div>
     </section>
   </main>
@@ -318,6 +318,14 @@
         frontName: f ? f.name : '', backName: b ? b.name : '',
         plate: '', edited: false, note: ''
       });
+      // Un solo archivo "dorso" en toda la carga: es el dorso de todas las cédulas
+      const all = [...dirs].flatMap(([dir, arr]) => arr.map((x) => ({ ...x, dir })));
+      const onlyBacks = all.filter((x) => isBack(x.name));
+      if (onlyBacks.length === 1) {
+        return all.filter((x) => !isBack(x.name))
+          .sort((a, b) => natural(a.dir, b.dir) || natural(a.name, b.name))
+          .map((f) => mk(f.dir, f, onlyBacks[0]));
+      }
       const out = [];
       for (const dir of [...dirs.keys()].sort(natural)) {
         const arr = dirs.get(dir).sort((a, b) => natural(a.name, b.name));
@@ -344,7 +352,7 @@
       records = pairItems(images);
       records.forEach((r) => {
         const folder = r.dir.split('/').pop();
-        for (const s of [folder, r.frontName, r.backName]) {
+        for (const s of [folder, r.frontName]) {
           const p = s && plateFromName(s);
           if (p) { r.plate = p; r.note = 'Patente tomada del nombre.'; break; }
         }
@@ -455,7 +463,7 @@
           if (my !== session) return;
           setNote(r, 'Buscando la patente en la foto...');
           let p = null;
-          for (const f of [r.front, r.back]) {
+          for (const f of [r.front]) { // solo el frente: el dorso es el mismo para todas
             try {
               const img = await loadImage(f);
               const { data } = await worker.recognize(prepCanvas(img, { x: 0, y: 0, w: 1, h: 1 }));
